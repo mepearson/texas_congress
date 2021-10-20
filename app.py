@@ -1,3 +1,7 @@
+# ----------------------------------------------------------------------------
+# Python Libraries
+# ----------------------------------------------------------------------------
+
 import os
 import pathlib
 import json
@@ -24,8 +28,10 @@ texas = gpd.read_file(texas_geojson_file)
 # links to district Files
 district_files_filepath = os.path.join(data_filepath,'data','district_files.csv')
 district_files = pd.read_csv(district_files_filepath)
+# add column with link formatted for markdown
+district_files['File'] ='[' + district_files['description'] + '](' + district_files['district_map_url'] + ')'
 
-## Link to district map
+## Create link to district map
 district_map_link_prefix = 'https://wrm.capitol.texas.gov/fyiwebdocs/PDF/congress/dist' # replace {district_number} with selected district
 district_map_link_suffix = '/m1.pdf'
 
@@ -93,12 +99,8 @@ app.layout = html.Div([
         ],width=8),
     ]),
     dbc.Row([
-        dbc.Col([
-            dash_table.DataTable(
-                            id='table-files',
-                            columns=[{"name": i, "id": i} for i in district_files.columns],
-                            data=district_files.to_dict('records')
-                            )
+        dbc.Col([            
+            html.Div(id='div-files'),
         ])
     ])
 ])
@@ -110,18 +112,52 @@ app.layout = html.Div([
 
 @callback(
     Output('div-map-select', 'children'),
+    Output('div-files','children'),
     Input('graph-map', 'clickData'))
 def update_figure(clickData):
+    # Data for table of files
+    table_data_cols = ['Congress','State','District', 'File']
+    table_data = district_files[table_data_cols]
+
     if clickData is None:
-        return html.P('Select a Congressional district from the map at left to load the District Map')
+        div_map = html.P('Select a Congressional district from the map at left to load the District Map')
+
+
+    # If District selected in map, display specialty map and filter files list
     else:
+        # get value of district selected
         cd = clickData['points'][0]['customdata'][0]
         if cd[0] == '0': # remove leading 0
             cd = cd[1:]
+        # get link to District map for selected district
         cd_link = ''.join([district_map_link_prefix,cd,district_map_link_suffix])
-        cd_view = html.Embed(src=cd_link,width="600",height="600",type="application/pdf")
+        div_map = html.Embed(src=cd_link,width="600",height="600",type="application/pdf")
+        # filter files table to district
+        table_data = table_data[table_data['District']==int(cd)]
 
-        return cd_view
+    div_files = dash_table.DataTable(
+        id='table-files',
+        style_data={'whiteSpace': 'normal',
+                    'height':'auto'},
+        style_table={'overflowX': 'scroll',
+                     'textOverflow':'ellipsis',
+                      'maxHeight': '800px',
+                      'paddingTop': '2px'
+                      },
+        data=table_data.to_dict('records'),
+        columns= [{'name':i, 'id':i,'type':'text','presentation':'markdown'} for i in table_data_cols],
+        # filter_action = 'native',
+        sort_action = 'native',
+        sort_mode = 'multi',
+        fixed_rows = {'headers':True}
+    )
+
+
+    return div_map, div_files
+
+# ----------------------------------------------------------------------------
+# RUN APP
+# ----------------------------------------------------------------------------
 
 if __name__ == '__main__':
     app.run_server(debug=True)
